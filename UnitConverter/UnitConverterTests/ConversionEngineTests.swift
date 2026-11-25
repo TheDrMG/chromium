@@ -40,6 +40,47 @@ final class ConversionEngineTests: XCTestCase {
         XCTAssertEqual(value(10, "fps", "mps", in: UnitCatalog.speed), 3.048, accuracy: 1e-9)
     }
 
+    /// 1.5 tsp × 5 = 7.5 tsp = 2.5 tbsp.
+    func testRecipeScalingExample() {
+        let volume = UnitCatalog.volume
+        let tsp = volume.unit(withID: "tsp")!, tbsp = volume.unit(withID: "tbsp")!
+        let scaled = 1.5 * Converter.parseMultiplier("x5")!
+        XCTAssertEqual(Converter.convert(scaled, from: tsp, to: tsp), 7.5, accuracy: 1e-12)
+        XCTAssertEqual(Converter.convert(scaled, from: tsp, to: tbsp), 2.5, accuracy: 1e-12)
+        XCTAssertEqual(Converter.format(Converter.convert(scaled, from: tsp, to: tbsp),
+                                        locale: Locale(identifier: "en_US")), "2.5")
+    }
+
+    func testSameSystemConversionsAreExact() {
+        let volume = UnitCatalog.volume, mass = UnitCatalog.mass
+        XCTAssertEqual(value(3, "tsp", "tbsp", in: volume), 1, accuracy: 1e-12)
+        XCTAssertEqual(value(16, "tbsp", "cup", in: volume), 1, accuracy: 1e-12)
+        XCTAssertEqual(value(4, "qt", "gal", in: volume), 1, accuracy: 1e-12)
+        XCTAssertEqual(value(16, "oz", "lb", in: mass), 1, accuracy: 1e-12)
+        XCTAssertEqual(value(1500, "g", "kg", in: mass), 1.5, accuracy: 1e-12)
+        XCTAssertEqual(value(250, "ml", "l", in: volume), 0.25, accuracy: 1e-12)
+    }
+
+    func testParseMultiplier() {
+        let us = Locale(identifier: "en_US")
+        XCTAssertEqual(Converter.parseMultiplier("5", locale: us), 5)
+        XCTAssertEqual(Converter.parseMultiplier("×2.5", locale: us), 2.5)
+        XCTAssertEqual(Converter.parseMultiplier("1/2", locale: us), 0.5)
+        XCTAssertEqual(Converter.parseMultiplier("1 1/2", locale: us), 1.5)
+        XCTAssertNil(Converter.parseMultiplier("0", locale: us))
+        XCTAssertNil(Converter.parseMultiplier("-2", locale: us))
+        XCTAssertNil(Converter.parseMultiplier("1/0", locale: us))
+    }
+
+    func testKitchenFraction() {
+        XCTAssertEqual(Converter.kitchenFraction(2.5), "2 ½")
+        XCTAssertEqual(Converter.kitchenFraction(0.75), "¾")
+        XCTAssertEqual(Converter.kitchenFraction(1.0 / 3), "⅓")
+        XCTAssertEqual(Converter.kitchenFraction(0.33), "≈ ⅓")
+        XCTAssertNil(Converter.kitchenFraction(7))
+        XCTAssertNil(Converter.kitchenFraction(1.42))
+    }
+
     func testParse() {
         XCTAssertEqual(Converter.parse("1.5", locale: Locale(identifier: "en_US")), 1.5)
         XCTAssertEqual(Converter.parse("1,5", locale: Locale(identifier: "de_DE")), 1.5)

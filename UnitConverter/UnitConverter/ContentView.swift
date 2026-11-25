@@ -1,36 +1,86 @@
 import SwiftUI
 import UIKit
 
-struct ContentView: View {
-    @AppStorage("categoryID") private var categoryID = UnitCatalog.length.id
-    @AppStorage("sourceUnitID") private var sourceUnitID = "ft"
-    @AppStorage("targetSystem") private var targetSystemRaw = MeasurementSystem.metric.rawValue
-    @AppStorage("inputText") private var inputText = "1"
+/// Which units to list under "All equivalents".
+enum ResultFilter: String, CaseIterable, Identifiable {
+    case all, metric, imperial
+    var id: String { rawValue }
 
-    @FocusState private var inputFocused: Bool
-    @State private var copiedID: String?
-
-    private var category: UnitCategory {
-        UnitCatalog.category(withID: categoryID) ?? UnitCatalog.length
+    var title: String {
+        switch self {
+        case .all: return "All"
+        case .metric: return "Metric"
+        case .imperial: return "Imperial / US"
+        }
     }
 
-    private var targetSystem: MeasurementSystem {
-        MeasurementSystem(rawValue: targetSystemRaw) ?? .metric
+    var system: MeasurementSystem? {
+        switch self {
+        case .all: return nil
+        case .metric: return .metric
+        case .imperial: return .imperial
+        }
+    }
+}
+
+struct ContentView: View {
+    private enum Field { case amount, scale }
+
+    /// Quick batch-size buttons: (stored text, label).
+    private static let quickScales: [(String, String)] = [
+        ("1/4", "×¼"), ("1/3", "×⅓"), ("1/2", "×½"), ("1", "×1"), ("2", "×2"),
+        ("3", "×3"), ("4", "×4"), ("5", "×5"), ("10", "×10"),
+    ]
+
+    @AppStorage("categoryID") private var categoryID = UnitCatalog.volume.id
+    @AppStorage("sourceUnitID") private var sourceUnitID = "tsp"
+    @AppStorage("targetUnitID") private var targetUnitID = "tbsp"
+    @AppStorage("inputText") private var inputText = "1.5"
+    @AppStorage("scaleText") private var scaleText = "1"
+    @AppStorage("resultFilter") private var filterRaw = ResultFilter.all.rawValue
+
+    @FocusState private var focusedField: Field?
+    @State private var copiedID: String?
+
+    // MARK: Derived state
+
+    private var category: UnitCategory {
+        UnitCatalog.category(withID: categoryID) ?? UnitCatalog.volume
     }
 
     private var sourceUnit: UnitOption {
-        category.unit(withID: sourceUnitID)
-            ?? category.units(in: targetSystem.opposite).first
+        category.unit(withID: sourceUnitID) ?? category.units[0]
+    }
+
+    private var targetUnit: UnitOption {
+        category.unit(withID: targetUnitID)
+            ?? category.units(in: sourceUnit.system.opposite).first
             ?? category.units[0]
     }
 
-    private var inputValue: Double? { Converter.parse(inputText) }
+    private var filter: ResultFilter { ResultFilter(rawValue: filterRaw) ?? .all }
 
-    private var results: [ConversionResult] {
-        guard let value = inputValue else { return [] }
-        return Converter.convert(value, from: sourceUnit, in: category, to: targetSystem)
-            .filter { $0.unit != sourceUnit }
+    private var inputValue: Double? { Converter.parse(inputText) }
+    private var multiplier: Double? { Converter.parseMultiplier(scaleText) }
+
+    /// The amount after scaling, still in the source unit.
+    private var scaledValue: Double? {
+        guard let value = inputValue, let multiplier else { return nil }
+        return value * multiplier
     }
+
+    private var isScaled: Bool { (multiplier ?? 1) != 1 }
+
+    private var targetValue: Double? {
+        scaledValue.map { Converter.convert($0, from: sourceUnit, to: targetUnit) }
+    }
+
+    private var equivalents: [ConversionResult] {
+        guard let scaledValue else { return [] }
+        return Converter.convert(scaledValue, from: sourceUnit, in: category, to: filter.system)
+    }
+
+    // MARK: Body
 
     var body: some View {
         NavigationStack {
@@ -41,146 +91,202 @@ struct ContentView: View {
                         .listRowBackground(Color.clear)
                 }
 
-                Section("Convert") {
-                    HStack(spacing: 12) {
-                        TextField("Value", text: $inputText)
-                            .keyboardType(.numbersAndPunctuation)
-                            .font(.system(.title, design: .rounded).weight(.semibold))
-                            .focused($inputFocused)
-                            .submitLabel(.done)
-                            .accessibilityLabel("Value to convert")
-                        if !inputText.isEmpty {
-                            Button {
-                                inputText = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Clear")
-                        }
-                    }
-
-                    Picker("From", selection: sourceBinding) {
-                        ForEach(MeasurementSystem.allCases) { system in
-                            Section(system.title) {
-                                ForEach(category.units(in: system)) { unit in
-                                    Text("\(unit.name) (\(unit.symbol))").tag(unit.id)
-                                }
-                            }
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
-
-                Section {
-                    Picker("Convert to", selection: targetBinding) {
-                        ForEach(MeasurementSystem.allCases) { system in
-                            Text("To \(system.title)").tag(system)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                }
-
-                resultsSection
+                amountSection
+                scaleSection
+                targetSection
+                equivalentsSection
             }
             .navigationTitle("Unit Converter")
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        flipDirection()
+                        swapUnits()
                     } label: {
-                        Label("Swap", systemImage: "arrow.left.arrow.right")
+                        Label("Swap units", systemImage: "arrow.up.arrow.down")
                     }
-                    .disabled(results.isEmpty)
+                    .disabled(targetValue == nil)
                 }
                 ToolbarItemGroup(placement: .keyboard) {
-                    Button("±") { toggleSign() }
+                    if focusedField == .amount {
+                        Button("±") { toggleSign() }
+                    }
                     Spacer()
-                    Button("Done") { inputFocused = false }
+                    Button("Done") { focusedField = nil }
                 }
             }
         }
     }
 
-    // MARK: Subviews
+    // MARK: Sections
 
     private var categoryPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(UnitCatalog.all) { item in
-                    Button {
+                    chip(item.name, systemImage: item.systemImage, selected: item == category) {
                         selectCategory(item)
-                    } label: {
-                        Label(item.name, systemImage: item.systemImage)
-                            .font(.subheadline.weight(.medium))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(
-                                Capsule().fill(item == category ? Color.accentColor : Color(.secondarySystemGroupedBackground))
-                            )
-                            .foregroundStyle(item == category ? Color.white : Color.primary)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(item == category ? .isSelected : [])
                 }
             }
             .padding(.vertical, 4)
         }
     }
 
-    @ViewBuilder
-    private var resultsSection: some View {
-        let best = Converter.bestFit(results)
-        Section {
-            if inputValue == nil {
-                Text(inputText.isEmpty ? "Enter a value to convert." : "“\(inputText)” isn’t a number.")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(results) { result in
-                    resultRow(result, isBest: result.id == best?.id)
+    private var amountSection: some View {
+        Section("Amount") {
+            HStack(spacing: 12) {
+                TextField("Value", text: $inputText)
+                    .keyboardType(.numbersAndPunctuation)
+                    .font(.system(.title, design: .rounded).weight(.semibold))
+                    .focused($focusedField, equals: .amount)
+                    .submitLabel(.done)
+                    .accessibilityLabel("Amount to convert")
+                if !inputText.isEmpty {
+                    Button {
+                        inputText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear")
                 }
             }
-        } header: {
-            Text(targetSystem.title)
-        } footer: {
-            if inputValue != nil {
-                Text("Tap a result to copy it. Long-press to convert from it.")
+            unitPicker("From", selection: $sourceUnitID)
+            if !inputText.isEmpty && inputValue == nil {
+                Text("“\(inputText)” isn’t a number.").foregroundStyle(.red)
             }
         }
     }
 
-    private func resultRow(_ result: ConversionResult, isBest: Bool) -> some View {
-        let formatted = Converter.format(result.value)
-        return Button {
-            UIPasteboard.general.string = "\(formatted) \(result.unit.symbol)"
-            withAnimation { copiedID = result.id }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                withAnimation { if copiedID == result.id { copiedID = nil } }
+    private var scaleSection: some View {
+        Section {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Self.quickScales, id: \.0) { item in
+                        chip(item.1, selected: multiplier == Converter.parseMultiplier(item.0)) {
+                            scaleText = item.0
+                            focusedField = nil
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
             }
+            .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+
+            HStack {
+                Text("Multiply by")
+                Spacer()
+                Text("×").foregroundStyle(.secondary)
+                TextField("1", text: $scaleText)
+                    .keyboardType(.numbersAndPunctuation)
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: 90)
+                    .focused($focusedField, equals: .scale)
+                    .submitLabel(.done)
+                    .accessibilityLabel("Batch multiplier")
+            }
+            if multiplier == nil {
+                Text("Enter a positive number, e.g. 5, 2.5 or 1/2.").foregroundStyle(.red)
+            }
+        } header: {
+            Text("Batch size")
+        } footer: {
+            Text("Scale a recipe amount — e.g. ×5 to make five batches, ×½ for half a batch.")
+        }
+    }
+
+    private var targetSection: some View {
+        Section("Convert to") {
+            unitPicker("To", selection: $targetUnitID, current: targetUnit.id)
+
+            if let targetValue, let value = inputValue {
+                let formatted = Converter.format(targetValue)
+                Button {
+                    copy("\(formatted) \(targetUnit.symbol)", id: "target")
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(equationText(value))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("\(formatted) \(targetUnit.symbol)")
+                                .font(.system(.largeTitle, design: .rounded).weight(.bold))
+                                .minimumScaleFactor(0.5)
+                                .lineLimit(1)
+                            Spacer()
+                            copiedBadge(id: "target")
+                        }
+                        if targetUnit.system == .imperial, let fraction = Converter.kitchenFraction(targetValue) {
+                            Text("\(fraction) \(targetUnit.symbol)")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Copies the result")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var equivalentsSection: some View {
+        Section {
+            Picker("Show", selection: $filterRaw) {
+                ForEach(ResultFilter.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            .pickerStyle(.segmented)
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+        }
+
+        if !equivalents.isEmpty {
+            let best = Converter.bestFit(equivalents)
+            Section {
+                ForEach(equivalents) { result in
+                    equivalentRow(result, isBest: result.id == best?.id)
+                }
+            } header: {
+                Text(isScaled ? "All equivalents (scaled)" : "All equivalents")
+            } footer: {
+                Text("Tap to make it the “To” unit. Long-press to copy or convert from it.")
+            }
+        }
+    }
+
+    private func equivalentRow(_ result: ConversionResult, isBest: Bool) -> some View {
+        let formatted = Converter.format(result.value)
+        let isTarget = result.unit == targetUnit
+        return Button {
+            targetUnitID = result.unit.id
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(result.unit.name)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Text("\(formatted) \(result.unit.symbol)")
-                        .font(.system(isBest ? .title2 : .title3, design: .rounded).weight(isBest ? .bold : .regular))
-                        .foregroundStyle(.primary)
-                        .textSelection(.enabled)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(formatted) \(result.unit.symbol)")
+                            .font(.system(.title3, design: .rounded).weight(isTarget ? .bold : .regular))
+                        if result.unit.system == .imperial, let fraction = Converter.kitchenFraction(result.value) {
+                            Text("(\(fraction))")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 Spacer()
                 if copiedID == result.id {
-                    Label("Copied", systemImage: "checkmark")
-                        .labelStyle(.iconOnly)
-                        .foregroundStyle(.green)
+                    copiedBadge(id: result.id)
+                } else if isTarget {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.accentColor)
+                        .accessibilityLabel("Selected")
                 } else if isBest {
-                    Image(systemName: "star.fill")
-                        .foregroundStyle(.yellow)
-                        .accessibilityLabel("Best fit")
+                    Image(systemName: "star.fill").foregroundStyle(.yellow)
+                        .accessibilityLabel("Most readable")
                 }
             }
             .contentShape(Rectangle())
@@ -188,46 +294,95 @@ struct ContentView: View {
         .buttonStyle(.plain)
         .contextMenu {
             Button {
-                useAsSource(result)
+                copy("\(formatted) \(result.unit.symbol)", id: result.id)
             } label: {
-                Label("Convert from \(result.unit.name)", systemImage: "arrow.uturn.left")
+                Label("Copy", systemImage: "doc.on.doc")
+            }
+            Button {
+                inputText = plainNumber(result.value)
+                sourceUnitID = result.unit.id
+                scaleText = "1"
+            } label: {
+                Label("Convert from \(result.unit.name)", systemImage: "arrow.uturn.up")
             }
         }
     }
 
-    // MARK: Bindings & actions
+    // MARK: Reusable pieces
 
-    private var sourceBinding: Binding<String> {
-        Binding(get: { sourceUnit.id }, set: { sourceUnitID = $0 })
-    }
-
-    private var targetBinding: Binding<MeasurementSystem> {
-        Binding(get: { targetSystem }, set: { newSystem in
-            targetSystemRaw = newSystem.rawValue
-            // Keep converting *from* the other system so results stay useful.
-            if sourceUnit.system == newSystem,
-               let replacement = category.units(in: newSystem.opposite).first {
-                sourceUnitID = replacement.id
+    private func unitPicker(_ title: String, selection: Binding<String>, current: String? = nil) -> some View {
+        let binding = Binding<String>(
+            get: { current ?? category.unit(withID: selection.wrappedValue)?.id ?? category.units[0].id },
+            set: { selection.wrappedValue = $0 }
+        )
+        return Picker(title, selection: binding) {
+            ForEach(MeasurementSystem.allCases) { system in
+                Section(system.title) {
+                    ForEach(category.units(in: system)) { unit in
+                        Text("\(unit.name) (\(unit.symbol))").tag(unit.id)
+                    }
+                }
             }
-        })
+        }
+        .pickerStyle(.menu)
     }
+
+    private func chip(_ title: String, systemImage: String? = nil, selected: Bool,
+                      action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Group {
+                if let systemImage {
+                    Label(title, systemImage: systemImage)
+                } else {
+                    Text(title)
+                }
+            }
+            .font(.subheadline.weight(.medium))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(selected ? Color.accentColor : Color(.secondarySystemGroupedBackground)))
+            .foregroundStyle(selected ? Color.white : Color.primary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    @ViewBuilder
+    private func copiedBadge(id: String) -> some View {
+        if copiedID == id {
+            Label("Copied", systemImage: "checkmark")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.green)
+        }
+    }
+
+    /// e.g. "1.5 tsp × 5 = 7.5 tsp =" or "1.5 tsp =".
+    private func equationText(_ value: Double) -> String {
+        let source = "\(Converter.format(value)) \(sourceUnit.symbol)"
+        guard isScaled, let multiplier, let scaledValue else { return "\(source) =" }
+        let scale = Converter.format(multiplier)
+        if sourceUnit == targetUnit { return "\(source) × \(scale) =" }
+        return "\(source) × \(scale) = \(Converter.format(scaledValue)) \(sourceUnit.symbol) ="
+    }
+
+    // MARK: Actions
 
     private func selectCategory(_ newCategory: UnitCategory) {
         guard newCategory != category else { return }
         categoryID = newCategory.id
-        sourceUnitID = newCategory.units(in: targetSystem.opposite).first?.id ?? newCategory.units[0].id
+        let from = newCategory.units(in: .imperial).first ?? newCategory.units[0]
+        sourceUnitID = from.id
+        targetUnitID = (newCategory.units(in: .metric).first ?? newCategory.units[0]).id
     }
 
-    private func flipDirection() {
-        guard let best = Converter.bestFit(results) else { return }
-        useAsSource(best)
-    }
-
-    private func useAsSource(_ result: ConversionResult) {
-        inputText = Converter.format(result.value)
-            .replacingOccurrences(of: Locale.current.groupingSeparator ?? ",", with: "")
-        sourceUnitID = result.unit.id
-        targetSystemRaw = result.unit.system.opposite.rawValue
+    /// Swaps From and To, carrying the (scaled) result over as the new amount.
+    private func swapUnits() {
+        guard let targetValue else { return }
+        let oldSource = sourceUnit.id
+        inputText = plainNumber(targetValue)
+        sourceUnitID = targetUnit.id
+        targetUnitID = oldSource
+        scaleText = "1"
     }
 
     private func toggleSign() {
@@ -236,6 +391,19 @@ struct ContentView: View {
         } else {
             inputText = "-" + inputText
         }
+    }
+
+    private func copy(_ text: String, id: String) {
+        UIPasteboard.general.string = text
+        withAnimation { copiedID = id }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            withAnimation { if copiedID == id { copiedID = nil } }
+        }
+    }
+
+    /// A formatted number without grouping separators, suitable for re-entry.
+    private func plainNumber(_ value: Double) -> String {
+        Converter.format(value).replacingOccurrences(of: Locale.current.groupingSeparator ?? ",", with: "")
     }
 }
 

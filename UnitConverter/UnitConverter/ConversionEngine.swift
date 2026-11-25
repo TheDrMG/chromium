@@ -58,6 +58,48 @@ struct ConversionResult: Identifiable {
     var id: String { unit.id }
 }
 
+// MARK: - Exact Imperial / US units
+//
+// Foundation's built-in Imperial units use rounded factors (e.g. a tablespoon is
+// not exactly 3 teaspoons and 16 oz is 0.999998 lb), which shows up as results
+// like "2.49999 tbsp". These use the exact legal definitions instead.
+
+enum ExactUnits {
+    // Volume — UnitVolume's base unit is the liter.
+    static let usFluidOunceL = 0.0295735295625
+    static let teaspoons = UnitVolume(symbol: "tsp", converter: UnitConverterLinear(coefficient: usFluidOunceL / 6))
+    static let tablespoons = UnitVolume(symbol: "tbsp", converter: UnitConverterLinear(coefficient: usFluidOunceL / 2))
+    static let fluidOunces = UnitVolume(symbol: "fl oz", converter: UnitConverterLinear(coefficient: usFluidOunceL))
+    static let cups = UnitVolume(symbol: "cup", converter: UnitConverterLinear(coefficient: usFluidOunceL * 8))
+    static let pints = UnitVolume(symbol: "pt", converter: UnitConverterLinear(coefficient: usFluidOunceL * 16))
+    static let quarts = UnitVolume(symbol: "qt", converter: UnitConverterLinear(coefficient: usFluidOunceL * 32))
+    static let gallons = UnitVolume(symbol: "gal", converter: UnitConverterLinear(coefficient: usFluidOunceL * 128))
+    static let imperialFluidOunceL = 0.0284130625
+    static let imperialFluidOunces = UnitVolume(symbol: "UK fl oz", converter: UnitConverterLinear(coefficient: imperialFluidOunceL))
+    static let imperialPints = UnitVolume(symbol: "UK pt", converter: UnitConverterLinear(coefficient: imperialFluidOunceL * 20))
+    static let imperialGallons = UnitVolume(symbol: "UK gal", converter: UnitConverterLinear(coefficient: imperialFluidOunceL * 160))
+    static let cubicInches = UnitVolume(symbol: "in³", converter: UnitConverterLinear(coefficient: 0.016387064))
+    static let cubicFeet = UnitVolume(symbol: "ft³", converter: UnitConverterLinear(coefficient: 28.316846592))
+
+    // Mass — UnitMass's base unit is the kilogram.
+    static let poundKg = 0.45359237
+    static let ounces = UnitMass(symbol: "oz", converter: UnitConverterLinear(coefficient: poundKg / 16))
+    static let pounds = UnitMass(symbol: "lb", converter: UnitConverterLinear(coefficient: poundKg))
+    static let stones = UnitMass(symbol: "st", converter: UnitConverterLinear(coefficient: poundKg * 14))
+    static let shortTons = UnitMass(symbol: "ton", converter: UnitConverterLinear(coefficient: poundKg * 2000))
+    static let longTons = UnitMass(symbol: "long ton", converter: UnitConverterLinear(coefficient: poundKg * 2240))
+
+    // Length — UnitLength's base unit is the meter.
+    static let miles = UnitLength(symbol: "mi", converter: UnitConverterLinear(coefficient: 1609.344))
+
+    // Area — UnitArea's base unit is the square meter.
+    static let squareInches = UnitArea(symbol: "in²", converter: UnitConverterLinear(coefficient: 0.00064516))
+    static let squareFeet = UnitArea(symbol: "ft²", converter: UnitConverterLinear(coefficient: 0.09290304))
+    static let squareYards = UnitArea(symbol: "yd²", converter: UnitConverterLinear(coefficient: 0.83612736))
+    static let acres = UnitArea(symbol: "ac", converter: UnitConverterLinear(coefficient: 4046.8564224))
+    static let squareMiles = UnitArea(symbol: "mi²", converter: UnitConverterLinear(coefficient: 2_589_988.110336))
+}
+
 // MARK: - Custom units Foundation doesn't provide
 
 extension UnitSpeed {
@@ -67,11 +109,6 @@ extension UnitSpeed {
 extension UnitEnergy {
     static let britishThermalUnits = UnitEnergy(symbol: "BTU", converter: UnitConverterLinear(coefficient: 1055.05585262))
     static let footPounds = UnitEnergy(symbol: "ft·lbf", converter: UnitConverterLinear(coefficient: 1.3558179483314004))
-}
-
-extension UnitMass {
-    /// Imperial (long) ton, 2240 lb.
-    static let longTons = UnitMass(symbol: "long tn", converter: UnitConverterLinear(coefficient: 1016.0469088))
 }
 
 extension UnitPower {
@@ -97,7 +134,7 @@ enum UnitCatalog {
         i("in", "Inches", UnitLength.inches),
         i("ft", "Feet", UnitLength.feet),
         i("yd", "Yards", UnitLength.yards),
-        i("mi", "Miles", UnitLength.miles),
+        i("mi", "Miles", ExactUnits.miles),
         i("nmi", "Nautical miles", UnitLength.nauticalMiles),
     ])
 
@@ -106,11 +143,11 @@ enum UnitCatalog {
         m("g", "Grams", UnitMass.grams),
         m("kg", "Kilograms", UnitMass.kilograms),
         m("t", "Metric tons", UnitMass.metricTons),
-        i("oz", "Ounces", UnitMass.ounces),
-        i("lb", "Pounds", UnitMass.pounds),
-        i("st", "Stone", UnitMass.stones),
-        i("ton", "US tons (short)", UnitMass.shortTons),
-        i("lton", "Imperial tons (long)", UnitMass.longTons),
+        i("oz", "Ounces", ExactUnits.ounces),
+        i("lb", "Pounds", ExactUnits.pounds),
+        i("st", "Stone", ExactUnits.stones),
+        i("ton", "US tons (short)", ExactUnits.shortTons),
+        i("lton", "Imperial tons (long)", ExactUnits.longTons),
     ])
 
     static let volume = UnitCategory(id: "volume", name: "Volume", systemImage: "drop", units: [
@@ -118,18 +155,18 @@ enum UnitCatalog {
         m("l", "Liters", UnitVolume.liters),
         m("cm3", "Cubic centimeters", UnitVolume.cubicCentimeters),
         m("m3", "Cubic meters", UnitVolume.cubicMeters),
-        i("tsp", "Teaspoons (US)", UnitVolume.teaspoons),
-        i("tbsp", "Tablespoons (US)", UnitVolume.tablespoons),
-        i("floz", "Fluid ounces (US)", UnitVolume.fluidOunces),
-        i("cup", "Cups (US)", UnitVolume.cups),
-        i("pt", "Pints (US)", UnitVolume.pints),
-        i("qt", "Quarts (US)", UnitVolume.quarts),
-        i("gal", "Gallons (US)", UnitVolume.gallons),
-        i("impfloz", "Fluid ounces (UK)", UnitVolume.imperialFluidOunces),
-        i("imppt", "Pints (UK)", UnitVolume.imperialPints),
-        i("impgal", "Gallons (UK)", UnitVolume.imperialGallons),
-        i("in3", "Cubic inches", UnitVolume.cubicInches),
-        i("ft3", "Cubic feet", UnitVolume.cubicFeet),
+        i("tsp", "Teaspoons (US)", ExactUnits.teaspoons),
+        i("tbsp", "Tablespoons (US)", ExactUnits.tablespoons),
+        i("floz", "Fluid ounces (US)", ExactUnits.fluidOunces),
+        i("cup", "Cups (US)", ExactUnits.cups),
+        i("pt", "Pints (US)", ExactUnits.pints),
+        i("qt", "Quarts (US)", ExactUnits.quarts),
+        i("gal", "Gallons (US)", ExactUnits.gallons),
+        i("impfloz", "Fluid ounces (UK)", ExactUnits.imperialFluidOunces),
+        i("imppt", "Pints (UK)", ExactUnits.imperialPints),
+        i("impgal", "Gallons (UK)", ExactUnits.imperialGallons),
+        i("in3", "Cubic inches", ExactUnits.cubicInches),
+        i("ft3", "Cubic feet", ExactUnits.cubicFeet),
     ])
 
     static let temperature = UnitCategory(id: "temperature", name: "Temperature", systemImage: "thermometer.medium", units: [
@@ -143,11 +180,11 @@ enum UnitCatalog {
         m("m2", "Square meters", UnitArea.squareMeters),
         m("ha", "Hectares", UnitArea.hectares),
         m("km2", "Square kilometers", UnitArea.squareKilometers),
-        i("in2", "Square inches", UnitArea.squareInches),
-        i("ft2", "Square feet", UnitArea.squareFeet),
-        i("yd2", "Square yards", UnitArea.squareYards),
-        i("ac", "Acres", UnitArea.acres),
-        i("mi2", "Square miles", UnitArea.squareMiles),
+        i("in2", "Square inches", ExactUnits.squareInches),
+        i("ft2", "Square feet", ExactUnits.squareFeet),
+        i("yd2", "Square yards", ExactUnits.squareYards),
+        i("ac", "Acres", ExactUnits.acres),
+        i("mi2", "Square miles", ExactUnits.squareMiles),
     ])
 
     static let speed = UnitCategory(id: "speed", name: "Speed", systemImage: "speedometer", units: [
@@ -200,13 +237,64 @@ enum UnitCatalog {
 // MARK: - Conversion
 
 enum Converter {
-    /// Converts `value` in `from` into every unit of `category` that belongs to `system`.
+    /// Converts `value` in `from` into a single unit `to` (same category).
+    static func convert(_ value: Double, from: UnitOption, to: UnitOption) -> Double {
+        Measurement(value: value, unit: from.unit).converted(to: to.unit).value
+    }
+
+    /// Converts `value` in `from` into every unit of `category` that belongs to `system`
+    /// (or every unit of the category when `system` is nil).
     static func convert(_ value: Double, from: UnitOption, in category: UnitCategory,
-                        to system: MeasurementSystem) -> [ConversionResult] {
-        let source = Measurement(value: value, unit: from.unit)
-        return category.units(in: system).map { target in
-            ConversionResult(unit: target, value: source.converted(to: target.unit).value)
+                        to system: MeasurementSystem?) -> [ConversionResult] {
+        let targets = system.map { category.units(in: $0) } ?? category.units
+        return targets.map { target in
+            ConversionResult(unit: target, value: convert(value, from: from, to: target))
         }
+    }
+
+    /// Parses a batch multiplier such as "5", "x5", "×2.5", "1/2" or "1 1/2".
+    /// Returns nil for anything that isn't a positive number.
+    static func parseMultiplier(_ text: String, locale: Locale = .current) -> Double? {
+        var trimmed = text.trimmingCharacters(in: .whitespaces)
+        if let first = trimmed.first, "xX×*".contains(first) {
+            trimmed = String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
+        }
+        let result: Double?
+        if trimmed.contains("/") {
+            let parts = trimmed.split(separator: " ", omittingEmptySubsequences: true)
+            guard (1...2).contains(parts.count) else { return nil }
+            let fraction = parts.last!.split(separator: "/")
+            guard fraction.count == 2,
+                  let numerator = parse(String(fraction[0]), locale: locale),
+                  let denominator = parse(String(fraction[1]), locale: locale),
+                  denominator != 0 else { return nil }
+            var total = numerator / denominator
+            if parts.count == 2 {
+                guard let whole = parse(String(parts[0]), locale: locale) else { return nil }
+                total += whole
+            }
+            result = total
+        } else {
+            result = parse(trimmed, locale: locale)
+        }
+        guard let value = result, value.isFinite, value > 0 else { return nil }
+        return value
+    }
+
+    /// A cooking-friendly fraction for a value, e.g. 2.5 → "2 ½", 0.333 → "⅓".
+    /// Returns nil for whole numbers or values that aren't near a common fraction.
+    static func kitchenFraction(_ value: Double) -> String? {
+        guard value.isFinite, value > 0, value < 10_000 else { return nil }
+        let whole = value.rounded(.down)
+        let remainder = value - whole
+        let fractions: [(Double, String)] = [
+            (1.0 / 8, "⅛"), (1.0 / 4, "¼"), (1.0 / 3, "⅓"), (3.0 / 8, "⅜"), (1.0 / 2, "½"),
+            (5.0 / 8, "⅝"), (2.0 / 3, "⅔"), (3.0 / 4, "¾"), (7.0 / 8, "⅞"),
+        ]
+        guard let match = fractions.min(by: { abs($0.0 - remainder) < abs($1.0 - remainder) }),
+              abs(match.0 - remainder) < 0.01 else { return nil }
+        let prefix = abs(match.0 - remainder) < 1e-9 ? "" : "≈ "
+        return whole == 0 ? prefix + match.1 : "\(prefix)\(Int(whole)) \(match.1)"
     }
 
     /// The result that reads most naturally (closest to a value between 1 and 1000).
