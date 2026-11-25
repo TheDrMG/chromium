@@ -84,6 +84,22 @@ final class ConversionEngineTests: XCTestCase {
         XCTAssertEqual(UnitCatalog.targetCategories(for: UnitCatalog.length).map(\.id), ["length"])
     }
 
+    func testIngredientDensities() {
+        let mass = UnitCatalog.mass, volume = UnitCatalog.volume
+        let g = mass.unit(withID: "g")!, cup = volume.unit(withID: "cup")!, tbsp = volume.unit(withID: "tbsp")!
+        let flour = IngredientCatalog.ingredient(withID: "apflour")
+        let sugar = IngredientCatalog.ingredient(withID: "sugar")
+        let butter = IngredientCatalog.ingredient(withID: "butter")
+
+        XCTAssertEqual(Converter.convert(1, from: cup, to: g, ingredient: flour), 120, accuracy: 1e-9)
+        XCTAssertEqual(Converter.convert(2, from: cup, to: g, ingredient: sugar), 400, accuracy: 1e-9)
+        XCTAssertEqual(Converter.convert(240, from: g, to: cup, ingredient: flour), 2, accuracy: 1e-9)
+        XCTAssertEqual(Converter.convert(1, from: tbsp, to: g, ingredient: butter), 227.0 / 16, accuracy: 1e-9)
+        XCTAssertEqual(Ingredient.water.density, 1, accuracy: 1e-12)
+        XCTAssertEqual(IngredientCatalog.ingredient(withID: "unknown"), .water)
+        XCTAssertEqual(Set(IngredientCatalog.all.map(\.id)).count, IngredientCatalog.all.count)
+    }
+
     func testParseMultiplier() {
         let us = Locale(identifier: "en_US")
         XCTAssertEqual(Converter.parseMultiplier("5", locale: us), 5)

@@ -38,6 +38,7 @@ struct ContentView: View {
     @AppStorage("inputText") private var inputText = "1.5"
     @AppStorage("scaleText") private var scaleText = "1"
     @AppStorage("resultFilter") private var filterRaw = ResultFilter.all.rawValue
+    @AppStorage("ingredientID") private var ingredientID = Ingredient.water.id
 
     @FocusState private var focusedField: Field?
     @State private var copiedID: String?
@@ -61,6 +62,11 @@ struct ContentView: View {
             ?? category.units[0]
     }
 
+    private var ingredient: Ingredient { IngredientCatalog.ingredient(withID: ingredientID) }
+
+    /// Weight and Volume can convert into each other, which needs an ingredient.
+    private var usesIngredient: Bool { targetCategories.count > 1 }
+
     private var filter: ResultFilter { ResultFilter(rawValue: filterRaw) ?? .all }
 
     private var inputValue: Double? { Converter.parse(inputText) }
@@ -75,17 +81,17 @@ struct ContentView: View {
     private var isScaled: Bool { (multiplier ?? 1) != 1 }
 
     private var targetValue: Double? {
-        scaledValue.map { Converter.convert($0, from: sourceUnit, to: targetUnit) }
+        scaledValue.map { Converter.convert($0, from: sourceUnit, to: targetUnit, ingredient: ingredient) }
     }
 
     private func equivalents(in target: UnitCategory) -> [ConversionResult] {
         guard let scaledValue else { return [] }
-        return Converter.convert(scaledValue, from: sourceUnit, in: target, to: filter.system)
+        return Converter.convert(scaledValue, from: sourceUnit, in: target, to: filter.system, ingredient: ingredient)
     }
 
     /// Section title for a target category, flagging the water assumption.
     private func title(for target: UnitCategory) -> String {
-        target == category ? target.name : "\(target.name) (as water)"
+        target == category ? target.name : "\(target.name) (as \(ingredient.name.lowercased()))"
     }
 
     // MARK: Body
@@ -208,6 +214,26 @@ struct ContentView: View {
         Section("Convert to") {
             unitPicker("To", selection: $targetUnitID, categories: targetCategories, current: targetUnit.id)
 
+            if usesIngredient {
+                Picker(selection: $ingredientID) {
+                    ForEach(IngredientCatalog.groups) { group in
+                        Section(group.name) {
+                            ForEach(group.items) { item in
+                                Text(item.name).tag(item.id)
+                            }
+                        }
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Ingredient")
+                        Text("For weight ↔ volume")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+
             if let targetValue, let value = inputValue {
                 let formatted = Converter.format(targetValue)
                 Button {
@@ -231,7 +257,7 @@ struct ContentView: View {
                                 .foregroundStyle(.secondary)
                         }
                         if Converter.isWeightVolumeConversion(from: sourceUnit, to: targetUnit) {
-                            Label("Assumes the density of water (1 mL = 1 g)", systemImage: "drop")
+                            Label("\(ingredient.name): \(densityNote)", systemImage: "scalemass")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -268,7 +294,7 @@ struct ContentView: View {
                     Text(isScaled ? "\(title(for: target)) — scaled" : title(for: target))
                 } footer: {
                     if target != category {
-                        Text("Converted using the density of water (1 mL = 1 g), regardless of the ingredient.")
+                        Text("Converted as \(ingredient.name.lowercased()): \(densityNote). Change the ingredient above.")
                     } else {
                         Text("Tap to make it the “To” unit. Long-press to copy or convert from it.")
                     }
@@ -378,6 +404,11 @@ struct ContentView: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.green)
         }
+    }
+
+    /// e.g. "1 cup = 120 g" for the selected ingredient.
+    private var densityNote: String {
+        "1 cup = \(Converter.format((ingredient.gramsPerCup * 10).rounded() / 10)) g"
     }
 
     /// e.g. "1.5 tsp × 5 = 7.5 tsp =" or "1.5 tsp =".

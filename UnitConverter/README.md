@@ -7,7 +7,7 @@ A SwiftUI iPhone/iPad app that converts between **Imperial / US customary** and 
 - **Any unit → any unit** in the same category, metric or Imperial/US, including same-system conversions (tsp → tbsp, g → kg, oz → lb)
 - **Batch scaling:** multiply an amount by ×¼, ×⅓, ×½, ×2 … ×10, or any custom value (`5`, `2.5`, `1/2`, `1 1/2`), and get it in the unit you choose.
   Example: 1.5 tsp × 5 → **7.5 tsp** or **2.5 tbsp**
-- **Weight ↔ volume:** convert between any weight and volume unit (e.g. 2 cups → 473 g, 100 g → 6.76 tbsp) using the standard density of water (1 mL = 1 g), regardless of the ingredient
+- **Weight ↔ volume:** convert between any weight and volume unit using a chosen ingredient's accepted cup weight — water by default (1 mL = 1 g), plus ~35 common ingredients (all-purpose flour 1 cup = 120 g, granulated sugar 200 g, brown sugar 213 g, butter 227 g, honey 340 g, table salt 288 g, …). Edit `IngredientCatalog` in `ConversionEngine.swift` to add or adjust ingredients.
 - Imperial/US results also show a kitchen fraction (2.5 → "2 ½", 0.33 → "≈ ⅓")
 - "All equivalents" list (All / Metric / Imperial) — tap a row to make it the target unit, long-press to copy or convert from it
 - Swap button flips From/To; tap the main result to copy it

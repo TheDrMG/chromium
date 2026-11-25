@@ -252,28 +252,110 @@ enum UnitCatalog {
     }
 }
 
+// MARK: - Ingredients (for weight <-> volume)
+
+/// A common ingredient and its accepted weight per US cup, used to convert
+/// between weight and volume. Values are the standard kitchen/baking figures
+/// (spooned & leveled for flours, packed for brown sugar).
+struct Ingredient: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let gramsPerCup: Double
+
+    /// Kilograms per liter (equivalently grams per milliliter).
+    var density: Double { gramsPerCup / (ExactUnits.usFluidOunceL * 8 * 1000) }
+
+    static let water = Ingredient(id: "water", name: "Water", gramsPerCup: 236.5882365)
+}
+
+struct IngredientGroup: Identifiable {
+    let name: String
+    let items: [Ingredient]
+    var id: String { name }
+}
+
+enum IngredientCatalog {
+    private static func item(_ id: String, _ name: String, _ grams: Double) -> Ingredient {
+        Ingredient(id: id, name: name, gramsPerCup: grams)
+    }
+
+    static let groups: [IngredientGroup] = [
+        IngredientGroup(name: "Liquids", items: [
+            .water,
+            item("milk", "Milk", 242),
+            item("cream", "Heavy cream", 238),
+            item("buttermilk", "Buttermilk", 245),
+            item("oil", "Vegetable oil", 218),
+            item("honey", "Honey", 340),
+            item("maple", "Maple syrup", 315),
+            item("molasses", "Molasses", 337),
+        ]),
+        IngredientGroup(name: "Flours & starches", items: [
+            item("apflour", "All-purpose flour", 120),
+            item("breadflour", "Bread flour", 120),
+            item("cakeflour", "Cake flour", 114),
+            item("wwflour", "Whole wheat flour", 113),
+            item("cornmeal", "Cornmeal", 138),
+            item("cornstarch", "Cornstarch", 112),
+            item("cocoa", "Cocoa powder", 84),
+        ]),
+        IngredientGroup(name: "Sugars", items: [
+            item("sugar", "Granulated sugar", 200),
+            item("brownsugar", "Brown sugar (packed)", 213),
+            item("powderedsugar", "Powdered sugar", 120),
+        ]),
+        IngredientGroup(name: "Fats & dairy", items: [
+            item("butter", "Butter", 227),
+            item("shortening", "Shortening", 190),
+            item("peanutbutter", "Peanut butter", 270),
+            item("yogurt", "Yogurt", 245),
+            item("sourcream", "Sour cream", 230),
+            item("parmesan", "Parmesan (grated)", 100),
+            item("cheddar", "Cheddar (shredded)", 113),
+        ]),
+        IngredientGroup(name: "Grains, nuts & more", items: [
+            item("oats", "Rolled oats", 90),
+            item("rice", "White rice (uncooked)", 185),
+            item("chocchips", "Chocolate chips", 170),
+            item("nuts", "Chopped nuts", 120),
+            item("raisins", "Raisins", 145),
+        ]),
+        IngredientGroup(name: "Leaveners & salt", items: [
+            item("salt", "Table salt", 288),
+            item("kosher", "Kosher salt (Morton)", 230),
+            item("bakingsoda", "Baking soda", 288),
+            item("bakingpowder", "Baking powder", 192),
+            item("yeast", "Instant yeast", 150),
+        ]),
+    ]
+
+    static let all: [Ingredient] = groups.flatMap { $0.items }
+
+    static func ingredient(withID id: String) -> Ingredient {
+        all.first { $0.id == id } ?? .water
+    }
+}
+
 // MARK: - Conversion
 
 enum Converter {
-    /// Density used for weight <-> volume conversions: water, 1 kg per liter
-    /// (1 g = 1 mL). The actual ingredient is not taken into account.
-    static let assumedDensityKgPerLiter = 1.0
-
     /// True when converting between `from` and `to` goes from weight to volume or back.
     static func isWeightVolumeConversion(from: UnitOption, to: UnitOption) -> Bool {
         (from.unit is UnitMass && to.unit is UnitVolume) || (from.unit is UnitVolume && to.unit is UnitMass)
     }
 
     /// Converts `value` in `from` into a single unit `to`. Units must share a
-    /// dimension, except weight <-> volume, which assumes the density of water.
-    static func convert(_ value: Double, from: UnitOption, to: UnitOption) -> Double {
+    /// dimension, except weight <-> volume, which uses `ingredient`'s density
+    /// (water by default: 1 g = 1 mL).
+    static func convert(_ value: Double, from: UnitOption, to: UnitOption,
+                        ingredient: Ingredient = .water) -> Double {
         let source = Measurement(value: value, unit: from.unit)
         if from.unit is UnitMass, to.unit is UnitVolume {
-            let liters = source.converted(to: UnitMass.kilograms).value / assumedDensityKgPerLiter
+            let liters = source.converted(to: UnitMass.kilograms).value / ingredient.density
             return Measurement(value: liters, unit: UnitVolume.liters).converted(to: to.unit).value
         }
         if from.unit is UnitVolume, to.unit is UnitMass {
-            let kilograms = source.converted(to: UnitVolume.liters).value * assumedDensityKgPerLiter
+            let kilograms = source.converted(to: UnitVolume.liters).value * ingredient.density
             return Measurement(value: kilograms, unit: UnitMass.kilograms).converted(to: to.unit).value
         }
         return source.converted(to: to.unit).value
@@ -282,10 +364,10 @@ enum Converter {
     /// Converts `value` in `from` into every unit of `category` that belongs to `system`
     /// (or every unit of the category when `system` is nil).
     static func convert(_ value: Double, from: UnitOption, in category: UnitCategory,
-                        to system: MeasurementSystem?) -> [ConversionResult] {
+                        to system: MeasurementSystem?, ingredient: Ingredient = .water) -> [ConversionResult] {
         let targets = system.map { category.units(in: $0) } ?? category.units
         return targets.map { target in
-            ConversionResult(unit: target, value: convert(value, from: from, to: target))
+            ConversionResult(unit: target, value: convert(value, from: from, to: target, ingredient: ingredient))
         }
     }
 
