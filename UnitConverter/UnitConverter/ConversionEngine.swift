@@ -268,6 +268,48 @@ struct Ingredient: Identifiable, Hashable {
     static let water = Ingredient(id: "water", name: "Water", gramsPerCup: 236.5882365)
 }
 
+/// The quick choice used for weight <-> volume: a generic material type,
+/// or a specific ingredient from `IngredientCatalog`.
+enum MaterialType: String, CaseIterable, Identifiable {
+    case liquid, powder, solid, ingredient
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .liquid: return "Liquid"
+        case .powder: return "Powder"
+        case .solid: return "Solid"
+        case .ingredient: return "Ingredient"
+        }
+    }
+
+    /// Typical examples, shown as a hint.
+    var examples: String {
+        switch self {
+        case .liquid: return "Water, milk, juice, broth"
+        case .powder: return "Flour, powdered sugar, spices"
+        case .solid: return "Butter, shortening, cream cheese"
+        case .ingredient: return "Pick a specific ingredient"
+        }
+    }
+
+    /// Standard density for the generic types; nil for `.ingredient`.
+    var standardIngredient: Ingredient? {
+        switch self {
+        case .liquid: return Ingredient(id: "liquid", name: "Liquid", gramsPerCup: Ingredient.water.gramsPerCup)
+        case .powder: return Ingredient(id: "powder", name: "Powder", gramsPerCup: 125)
+        case .solid: return Ingredient(id: "solid", name: "Solid", gramsPerCup: 227)
+        case .ingredient: return nil
+        }
+    }
+
+    /// The ingredient to convert with, given the specific-ingredient selection.
+    func resolve(ingredientID: String) -> Ingredient {
+        standardIngredient ?? IngredientCatalog.ingredient(withID: ingredientID)
+    }
+}
+
 struct IngredientGroup: Identifiable {
     let name: String
     let items: [Ingredient]

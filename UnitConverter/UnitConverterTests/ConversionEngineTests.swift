@@ -100,6 +100,18 @@ final class ConversionEngineTests: XCTestCase {
         XCTAssertEqual(Set(IngredientCatalog.all.map(\.id)).count, IngredientCatalog.all.count)
     }
 
+    func testMaterialTypes() {
+        let g = UnitCatalog.mass.unit(withID: "g")!, cup = UnitCatalog.volume.unit(withID: "cup")!
+        func grams(_ type: MaterialType, ingredientID: String = "water") -> Double {
+            Converter.convert(1, from: cup, to: g, ingredient: type.resolve(ingredientID: ingredientID))
+        }
+        XCTAssertEqual(grams(.liquid), 236.5882365, accuracy: 1e-6)
+        XCTAssertEqual(grams(.powder), 125, accuracy: 1e-9)
+        XCTAssertEqual(grams(.solid), 227, accuracy: 1e-9)
+        XCTAssertEqual(grams(.ingredient, ingredientID: "sugar"), 200, accuracy: 1e-9)
+        XCTAssertNil(MaterialType.ingredient.standardIngredient)
+    }
+
     func testParseMultiplier() {
         let us = Locale(identifier: "en_US")
         XCTAssertEqual(Converter.parseMultiplier("5", locale: us), 5)

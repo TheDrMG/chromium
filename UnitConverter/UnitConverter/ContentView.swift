@@ -39,6 +39,7 @@ struct ContentView: View {
     @AppStorage("scaleText") private var scaleText = "1"
     @AppStorage("resultFilter") private var filterRaw = ResultFilter.all.rawValue
     @AppStorage("ingredientID") private var ingredientID = Ingredient.water.id
+    @AppStorage("materialType") private var materialRaw = MaterialType.liquid.rawValue
 
     @FocusState private var focusedField: Field?
     @State private var copiedID: String?
@@ -62,7 +63,8 @@ struct ContentView: View {
             ?? category.units[0]
     }
 
-    private var ingredient: Ingredient { IngredientCatalog.ingredient(withID: ingredientID) }
+    private var material: MaterialType { MaterialType(rawValue: materialRaw) ?? .liquid }
+    private var ingredient: Ingredient { material.resolve(ingredientID: ingredientID) }
 
     /// Weight and Volume can convert into each other, which needs an ingredient.
     private var usesIngredient: Bool { targetCategories.count > 1 }
@@ -215,23 +217,32 @@ struct ContentView: View {
             unitPicker("To", selection: $targetUnitID, categories: targetCategories, current: targetUnit.id)
 
             if usesIngredient {
-                Picker(selection: $ingredientID) {
-                    ForEach(IngredientCatalog.groups) { group in
-                        Section(group.name) {
-                            ForEach(group.items) { item in
-                                Text(item.name).tag(item.id)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Weight ↔ volume as")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Picker("Material", selection: $materialRaw) {
+                        ForEach(MaterialType.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.segmented)
+                    Text(material == .ingredient ? material.examples : "\(material.examples) · \(densityNote)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+
+                if material == .ingredient {
+                    Picker("Ingredient", selection: $ingredientID) {
+                        ForEach(IngredientCatalog.groups) { group in
+                            Section(group.name) {
+                                ForEach(group.items) { item in
+                                    Text(item.name).tag(item.id)
+                                }
                             }
                         }
                     }
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Ingredient")
-                        Text("For weight ↔ volume")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    .pickerStyle(.menu)
                 }
-                .pickerStyle(.menu)
             }
 
             if let targetValue, let value = inputValue {
@@ -294,7 +305,7 @@ struct ContentView: View {
                     Text(isScaled ? "\(title(for: target)) — scaled" : title(for: target))
                 } footer: {
                     if target != category {
-                        Text("Converted as \(ingredient.name.lowercased()): \(densityNote). Change the ingredient above.")
+                        Text("Converted as \(ingredient.name.lowercased()): \(densityNote). Change it under “Weight ↔ volume as” above.")
                     } else {
                         Text("Tap to make it the “To” unit. Long-press to copy or convert from it.")
                     }
