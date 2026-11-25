@@ -232,14 +232,51 @@ enum UnitCatalog {
     static func category(withID id: String) -> UnitCategory? {
         all.first { $0.id == id }
     }
+
+    /// Categories a unit can be converted into from `category`. Weight and volume
+    /// are linked so you can go from one to the other (assuming water density).
+    static func targetCategories(for category: UnitCategory) -> [UnitCategory] {
+        switch category.id {
+        case mass.id: return [mass, volume]
+        case volume.id: return [volume, mass]
+        default: return [category]
+        }
+    }
+
+    /// Looks up a unit by ID among the categories reachable from `category`.
+    static func targetUnit(withID id: String, from category: UnitCategory) -> UnitOption? {
+        for candidate in targetCategories(for: category) {
+            if let unit = candidate.unit(withID: id) { return unit }
+        }
+        return nil
+    }
 }
 
 // MARK: - Conversion
 
 enum Converter {
-    /// Converts `value` in `from` into a single unit `to` (same category).
+    /// Density used for weight <-> volume conversions: water, 1 kg per liter
+    /// (1 g = 1 mL). The actual ingredient is not taken into account.
+    static let assumedDensityKgPerLiter = 1.0
+
+    /// True when converting between `from` and `to` goes from weight to volume or back.
+    static func isWeightVolumeConversion(from: UnitOption, to: UnitOption) -> Bool {
+        (from.unit is UnitMass && to.unit is UnitVolume) || (from.unit is UnitVolume && to.unit is UnitMass)
+    }
+
+    /// Converts `value` in `from` into a single unit `to`. Units must share a
+    /// dimension, except weight <-> volume, which assumes the density of water.
     static func convert(_ value: Double, from: UnitOption, to: UnitOption) -> Double {
-        Measurement(value: value, unit: from.unit).converted(to: to.unit).value
+        let source = Measurement(value: value, unit: from.unit)
+        if from.unit is UnitMass, to.unit is UnitVolume {
+            let liters = source.converted(to: UnitMass.kilograms).value / assumedDensityKgPerLiter
+            return Measurement(value: liters, unit: UnitVolume.liters).converted(to: to.unit).value
+        }
+        if from.unit is UnitVolume, to.unit is UnitMass {
+            let kilograms = source.converted(to: UnitVolume.liters).value * assumedDensityKgPerLiter
+            return Measurement(value: kilograms, unit: UnitMass.kilograms).converted(to: to.unit).value
+        }
+        return source.converted(to: to.unit).value
     }
 
     /// Converts `value` in `from` into every unit of `category` that belongs to `system`

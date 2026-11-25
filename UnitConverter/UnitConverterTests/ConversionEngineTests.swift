@@ -61,6 +61,29 @@ final class ConversionEngineTests: XCTestCase {
         XCTAssertEqual(value(250, "ml", "l", in: volume), 0.25, accuracy: 1e-12)
     }
 
+    /// Weight <-> volume uses the density of water: 1 g = 1 mL.
+    func testWeightVolumeAssumesWater() {
+        let mass = UnitCatalog.mass, volume = UnitCatalog.volume
+        func convert(_ v: Double, _ from: UnitOption, _ to: UnitOption) -> Double {
+            Converter.convert(v, from: from, to: to)
+        }
+        let g = mass.unit(withID: "g")!, kg = mass.unit(withID: "kg")!, oz = mass.unit(withID: "oz")!
+        let ml = volume.unit(withID: "ml")!, l = volume.unit(withID: "l")!
+        let cup = volume.unit(withID: "cup")!, tbsp = volume.unit(withID: "tbsp")!
+
+        XCTAssertEqual(convert(250, g, ml), 250, accuracy: 1e-9)
+        XCTAssertEqual(convert(1, l, kg), 1, accuracy: 1e-12)
+        XCTAssertEqual(convert(1, cup, g), 236.5882365, accuracy: 1e-6)
+        XCTAssertEqual(convert(1, tbsp, g), 14.78676478, accuracy: 1e-6)
+        XCTAssertEqual(convert(convert(3, oz, cup), cup, oz), 3, accuracy: 1e-9)
+        XCTAssertTrue(Converter.isWeightVolumeConversion(from: g, to: cup))
+        XCTAssertFalse(Converter.isWeightVolumeConversion(from: g, to: oz))
+
+        XCTAssertEqual(UnitCatalog.targetCategories(for: mass).map(\.id), ["mass", "volume"])
+        XCTAssertEqual(UnitCatalog.targetUnit(withID: "cup", from: mass)?.id, "cup")
+        XCTAssertEqual(UnitCatalog.targetCategories(for: UnitCatalog.length).map(\.id), ["length"])
+    }
+
     func testParseMultiplier() {
         let us = Locale(identifier: "en_US")
         XCTAssertEqual(Converter.parseMultiplier("5", locale: us), 5)

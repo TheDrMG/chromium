@@ -52,8 +52,11 @@ struct ContentView: View {
         category.unit(withID: sourceUnitID) ?? category.units[0]
     }
 
+    /// The category plus any category it can convert into (weight <-> volume).
+    private var targetCategories: [UnitCategory] { UnitCatalog.targetCategories(for: category) }
+
     private var targetUnit: UnitOption {
-        category.unit(withID: targetUnitID)
+        UnitCatalog.targetUnit(withID: targetUnitID, from: category)
             ?? category.units(in: sourceUnit.system.opposite).first
             ?? category.units[0]
     }
@@ -75,9 +78,14 @@ struct ContentView: View {
         scaledValue.map { Converter.convert($0, from: sourceUnit, to: targetUnit) }
     }
 
-    private var equivalents: [ConversionResult] {
+    private func equivalents(in target: UnitCategory) -> [ConversionResult] {
         guard let scaledValue else { return [] }
-        return Converter.convert(scaledValue, from: sourceUnit, in: category, to: filter.system)
+        return Converter.convert(scaledValue, from: sourceUnit, in: target, to: filter.system)
+    }
+
+    /// Section title for a target category, flagging the water assumption.
+    private func title(for target: UnitCategory) -> String {
+        target == category ? target.name : "\(target.name) (as water)"
     }
 
     // MARK: Body
@@ -152,7 +160,7 @@ struct ContentView: View {
                     .accessibilityLabel("Clear")
                 }
             }
-            unitPicker("From", selection: $sourceUnitID)
+            unitPicker("From", selection: $sourceUnitID, categories: [category])
             if !inputText.isEmpty && inputValue == nil {
                 Text("“\(inputText)” isn’t a number.").foregroundStyle(.red)
             }
@@ -198,7 +206,7 @@ struct ContentView: View {
 
     private var targetSection: some View {
         Section("Convert to") {
-            unitPicker("To", selection: $targetUnitID, current: targetUnit.id)
+            unitPicker("To", selection: $targetUnitID, categories: targetCategories, current: targetUnit.id)
 
             if let targetValue, let value = inputValue {
                 let formatted = Converter.format(targetValue)
@@ -222,6 +230,11 @@ struct ContentView: View {
                                 .font(.headline)
                                 .foregroundStyle(.secondary)
                         }
+                        if Converter.isWeightVolumeConversion(from: sourceUnit, to: targetUnit) {
+                            Label("Assumes the density of water (1 mL = 1 g)", systemImage: "drop")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())
@@ -243,16 +256,23 @@ struct ContentView: View {
             .listRowBackground(Color.clear)
         }
 
-        if !equivalents.isEmpty {
-            let best = Converter.bestFit(equivalents)
-            Section {
-                ForEach(equivalents) { result in
-                    equivalentRow(result, isBest: result.id == best?.id)
+        ForEach(targetCategories) { target in
+            let results = equivalents(in: target)
+            if !results.isEmpty {
+                let best = Converter.bestFit(results)
+                Section {
+                    ForEach(results) { result in
+                        equivalentRow(result, isBest: result.id == best?.id)
+                    }
+                } header: {
+                    Text(isScaled ? "\(title(for: target)) — scaled" : title(for: target))
+                } footer: {
+                    if target != category {
+                        Text("Converted using the density of water (1 mL = 1 g), regardless of the ingredient.")
+                    } else {
+                        Text("Tap to make it the “To” unit. Long-press to copy or convert from it.")
+                    }
                 }
-            } header: {
-                Text(isScaled ? "All equivalents (scaled)" : "All equivalents")
-            } footer: {
-                Text("Tap to make it the “To” unit. Long-press to copy or convert from it.")
             }
         }
     }
@@ -300,7 +320,7 @@ struct ContentView: View {
             }
             Button {
                 inputText = plainNumber(result.value)
-                sourceUnitID = result.unit.id
+                convertFrom(result.unit)
                 scaleText = "1"
             } label: {
                 Label("Convert from \(result.unit.name)", systemImage: "arrow.uturn.up")
@@ -310,16 +330,20 @@ struct ContentView: View {
 
     // MARK: Reusable pieces
 
-    private func unitPicker(_ title: String, selection: Binding<String>, current: String? = nil) -> some View {
+    private func unitPicker(_ title: String, selection: Binding<String>, categories: [UnitCategory],
+                            current: String? = nil) -> some View {
         let binding = Binding<String>(
             get: { current ?? category.unit(withID: selection.wrappedValue)?.id ?? category.units[0].id },
             set: { selection.wrappedValue = $0 }
         )
+        let showCategoryName = categories.count > 1
         return Picker(title, selection: binding) {
-            ForEach(MeasurementSystem.allCases) { system in
-                Section(system.title) {
-                    ForEach(category.units(in: system)) { unit in
-                        Text("\(unit.name) (\(unit.symbol))").tag(unit.id)
+            ForEach(categories) { group in
+                ForEach(MeasurementSystem.allCases) { system in
+                    Section(showCategoryName ? "\(self.title(for: group)) · \(system.title)" : system.title) {
+                        ForEach(group.units(in: system)) { unit in
+                            Text("\(unit.name) (\(unit.symbol))").tag(unit.id)
+                        }
                     }
                 }
             }
@@ -380,9 +404,17 @@ struct ContentView: View {
         guard let targetValue else { return }
         let oldSource = sourceUnit.id
         inputText = plainNumber(targetValue)
-        sourceUnitID = targetUnit.id
+        convertFrom(targetUnit)
         targetUnitID = oldSource
         scaleText = "1"
+    }
+
+    /// Makes `unit` the From unit, switching between Weight and Volume if needed.
+    private func convertFrom(_ unit: UnitOption) {
+        if let owner = targetCategories.first(where: { $0.unit(withID: unit.id) != nil }) {
+            categoryID = owner.id
+        }
+        sourceUnitID = unit.id
     }
 
     private func toggleSign() {
