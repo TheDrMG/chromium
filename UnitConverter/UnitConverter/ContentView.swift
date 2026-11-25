@@ -339,7 +339,7 @@ struct ContentView: View {
                 if copiedID == result.id {
                     copiedBadge(id: result.id)
                 } else if isTarget {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.accentColor)
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.brand)
                         .accessibilityLabel("Selected")
                 } else if isBest {
                     Image(systemName: "star.fill").foregroundStyle(.yellow)
@@ -401,7 +401,7 @@ struct ContentView: View {
             .font(.subheadline.weight(.medium))
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(Capsule().fill(selected ? Color.accentColor : Color(.secondarySystemGroupedBackground)))
+            .background(Capsule().fill(selected ? Color.brand : Color(.secondarySystemGroupedBackground)))
             .foregroundStyle(selected ? Color.white : Color.primary)
         }
         .buttonStyle(.plain)

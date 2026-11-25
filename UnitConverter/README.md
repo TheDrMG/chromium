@@ -15,7 +15,19 @@ A SwiftUI iPhone/iPad app that converts between **Imperial / US customary** and 
 - Remembers your last category, units, amount and batch size
 - Imperial/US weight, volume, length and area units use exact legal definitions (Foundation's built-in factors are rounded, which would give e.g. 2.49999 tbsp instead of 2.5)
 
-## Run it
+## Build on Linux with xtool
+The folder is also a Swift package (`Package.swift` + `xtool.yml`), so it builds with [xtool](https://github.com/xtool-org/xtool) — no Mac needed.
+
+One-time setup (if not done already): install the Swift toolchain, `usbmuxd`, and xtool, then run `xtool setup` (sign in with your Apple ID and point it at `Xcode.xip`). See xtool's Linux installation guide for details.
+
+Then, with your iPhone plugged in (and Developer Mode on):
+```bash
+cd UnitConverter
+xtool dev
+```
+The first build takes a few minutes; later ones are faster. Change `bundleID` in `xtool.yml` to something unique (e.g. `com.yourname.UnitConverter`) if xtool reports that the ID is taken.
+
+## Run it on a Mac (Xcode)
 1. On a Mac with **Xcode 15+**, open `UnitConverter.xcodeproj`.
 2. Select an iPhone simulator and press **⌘R**.
 3. To run on a real device, set your Team under *Signing & Capabilities* and change the bundle ID (`com.example.UnitConverter`) to something unique.
@@ -24,6 +36,9 @@ Run the unit tests with **⌘U**. Requires iOS 17+.
 
 ## Layout
 ```
+Package.swift               – Swift package (used by xtool)
+xtool.yml                   – xtool config: bundle ID, app icon
+UnitConverter.xcodeproj     – Xcode project (same sources)
 UnitConverter/
   UnitConverterApp.swift    – app entry point
   ContentView.swift         – the UI

@@ -1,0 +1,3 @@
+version: 1
+bundleID: com.example.UnitConverter
+iconPath: UnitConverter/Assets.xcassets/AppIcon.appiconset/AppIcon.png
